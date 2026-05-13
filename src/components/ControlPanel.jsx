@@ -1,10 +1,39 @@
 /**
- * ControlPanel — protocol toggle, source/dest selectors, playback controls, speed
+ * @fileoverview ControlPanel — all user-facing simulation controls.
+ *
+ * Renders in a single horizontal strip containing:
+ *  - Protocol toggle (RIP / OSPF)
+ *  - Source host selector
+ *  - Destination host selector
+ *  - Playback controls (reset, step back, play/pause, step forward)
+ *  - Speed selector (Step-by-Step, 1×, 2×, 4×)
+ *  - Progress bar and step counter
  */
 import { ENDPOINTS } from '../data/topology.js';
 
 const SPEED_LABELS = { 1: 'Step-by-Step', 2: 'Slow', 3: 'Medium', 4: 'Fast' };
 
+/**
+ * @param {Object}         props
+ * @param {'rip'|'ospf'}   props.protocol        - Active protocol
+ * @param {Function}       props.changeProtocol  - ('rip'|'ospf') => void
+ * @param {string}         props.srcHost         - Source host ID
+ * @param {string}         props.dstHost         - Destination host ID
+ * @param {Function}       props.changeSrc       - (id: string) => void
+ * @param {Function}       props.changeDst       - (id: string) => void
+ * @param {number}         props.speed           - Speed level 1–4
+ * @param {Function}       props.changeSpeed     - (level: number) => void
+ * @param {boolean}        props.playing         - Whether auto-play is active
+ * @param {Function}       props.play            - Start auto-play
+ * @param {Function}       props.pause           - Pause auto-play
+ * @param {Function}       props.stepBack        - Step one event back
+ * @param {Function}       props.stepForward     - Step one event forward
+ * @param {Function}       props.reset           - Reset to step 0
+ * @param {number}         props.stepIndex       - Current step index (0-based)
+ * @param {number}         props.totalSteps      - Total number of steps
+ * @param {SimStep|null}   props.currentStep     - Current step object
+ * @returns {JSX.Element}
+ */
 export default function ControlPanel({
   protocol, changeProtocol,
   srcHost, dstHost, changeSrc, changeDst,

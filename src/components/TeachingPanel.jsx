@@ -1,7 +1,17 @@
 /**
- * TeachingPanel — right-side educational sidebar
- * Shows: current step explanation, packet type info, calculations,
- *        routing tables, protocol facts, advantages/disadvantages
+ * @fileoverview TeachingPanel — educational sidebar with four tabs.
+ *
+ * Tabs:
+ *  📖 Step     — Current event explanation, teaching note, calculations,
+ *                SPF cost table (OSPF), slow-link warning (RIP)
+ *  📋 Table    — Live routing table for a user-selected router
+ *  ℹ Protocol  — Packet types, key facts, formulae, pros/cons
+ *  🗄 LSDB     — OSPF Link State Database viewer (OSPF only)
+ *
+ * Internal sub-components (not exported):
+ *  - RoutingTable    renders a single router's IP routing table
+ *  - LsdbPanel       renders the full LSDB as it builds up
+ *  - SpfTable        renders the Dijkstra cost/prev table for OSPF SPF steps
  */
 import { useState } from 'react';
 import { ROUTERS } from '../data/topology.js';
@@ -60,6 +70,15 @@ const PACKET_INFO = {
   },
 };
 
+/**
+ * Renders a single router's routing table as an HTML table.
+ *
+ * @param {Object}            props
+ * @param {AllRipTables|AllOspfTables|null} props.tables   - All routing tables snapshot
+ * @param {string}            props.routerId  - Router whose table to display
+ * @param {'rip'|'ospf'}      props.protocol  - Used to label the metric column
+ * @returns {JSX.Element|null}
+ */
 function RoutingTable({ tables, routerId, protocol }) {
   if (!tables || !tables[routerId]) return null;
   const table = tables[routerId];
@@ -96,6 +115,14 @@ function RoutingTable({ tables, routerId, protocol }) {
   );
 }
 
+/**
+ * Renders the OSPF Link State Database as it accumulates during LSA flooding.
+ * Each router's LSA is shown as a card listing its links and their costs.
+ *
+ * @param {Object}   props
+ * @param {Lsdb}     props.lsdb - Current LSDB snapshot (may be partial during flooding)
+ * @returns {JSX.Element|null}
+ */
 function LsdbPanel({ lsdb }) {
   if (!lsdb || Object.keys(lsdb).length === 0) return null;
   return (
@@ -120,6 +147,16 @@ function LsdbPanel({ lsdb }) {
   );
 }
 
+/**
+ * Renders the Dijkstra cost/prev table for OSPF SPF steps.
+ * Highlights the currently visited node, already-visited nodes,
+ * and nodes whose costs were improved ("relaxed") this iteration.
+ *
+ * @param {Object}         props
+ * @param {SpfStepPayload} props.spfStep   - Dijkstra state snapshot for this step
+ * @param {string}         props.srcRouter - SPF root router ID (shown as 'Self' in prev column)
+ * @returns {JSX.Element|null}
+ */
 function SpfTable({ spfStep, srcRouter }) {
   if (!spfStep) return null;
   const { costs, prev, explorations, visitedNode, visited } = spfStep;
@@ -163,6 +200,16 @@ function SpfTable({ spfStep, srcRouter }) {
   );
 }
 
+/**
+ * Main teaching panel component.
+ *
+ * @param {Object}       props
+ * @param {'rip'|'ospf'} props.protocol    - Active routing protocol
+ * @param {SimStep|null} props.currentStep - Current simulation step
+ * @param {string}       props.srcHost     - Source host ID
+ * @param {string}       props.dstHost     - Destination host ID
+ * @returns {JSX.Element}
+ */
 export default function TeachingPanel({ protocol, currentStep, srcHost, dstHost }) {
   const [tab, setTab] = useState('current'); // 'current' | 'protocol' | 'table' | 'lsdb'
   const [selectedRouter, setSelectedRouter] = useState('R1');

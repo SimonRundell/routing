@@ -1,57 +1,180 @@
 /**
- * OSPF Simulation Engine
- * Generates discrete steps for:
- *  Phase 1 — Convergence:
- *    1. Hello packets → neighbour discovery
- *    2. DBD exchange → LSDB synchronisation
- *    3. LSR / LSU / LSAck → LSA flooding
- *    4. SPF (Dijkstra) calculation
- *  Phase 2 — Forwarding (cost-aware hop-by-hop)
+ * @fileoverview OSPF Simulation Engine.
+ *
+ * Generates an ordered array of discrete simulation steps representing the
+ * full OSPF lifecycle for a given source/destination pair:
+ *
+ *   Phase 1 — Convergence
+ *     1. Hello packets       → neighbour discovery and adjacency formation
+ *     2. DBD exchange        → LSDB summary comparison
+ *     3. LSR / LSU / LSAck   → reliable LSA flooding
+ *     4. SPF calculation     → Dijkstra's algorithm run step by step
+ *
+ *   Phase 2 — Forwarding
+ *     - Route decision: shows path OSPF computed (always cost-optimal)
+ *     - Hop-by-hop: one step per router along the SPF-derived path
+ *     - Delivery confirmation
+ *
+ * Teaching note — the key OSPF strength illustrated here:
+ *   OSPF selects R1 → R2 → R3 → R5 (cost 30, all 10 Mbps links) rather
+ *   than R1 → R3 → R5 (2 hops but 512 Kbps satellite) which RIP would
+ *   choose. Cost = 10^8 / bandwidth_bps distinguishes fast from slow links.
  */
 
 import { ROUTERS, LINKS, ADJACENCY } from '../data/topology.js';
 
+/** @type {string[]} Ordered list of all router IDs in the topology. */
 const ROUTER_IDS = Object.keys(ROUTERS);
 
-// ─────────────────────────────────────────────
-// Dijkstra's SPF algorithm
-// Returns { costs, prev } maps
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Type definitions
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @typedef {Object} OspfTableEntry
+ * @property {string} network  - CIDR network (e.g. '10.1.0.0/24')
+ * @property {string} nextHop  - Next-hop router ID, or 'Direct' for connected subnets
+ * @property {number} cost     - OSPF cumulative cost from this router to the network
+ * @property {string} via      - Same as nextHop (first hop on the SPF path)
+ */
+
+/**
+ * @typedef {Object.<string, OspfTableEntry>} OspfTable
+ * A single router's SPF-derived routing table, keyed by network CIDR.
+ */
+
+/**
+ * @typedef {Object.<string, OspfTable>} AllOspfTables
+ * Routing tables for all routers, keyed by router ID.
+ */
+
+/**
+ * @typedef {Object} LsaLink
+ * @property {string} neighbor  - Adjacent router ID
+ * @property {number} cost      - OSPF cost to that neighbour
+ * @property {string} bandwidth - Human-readable bandwidth string
+ * @property {string} linkId    - Link identifier (e.g. 'R1-R2')
+ */
+
+/**
+ * @typedef {Object} RouterLsa
+ * @property {string}    routerId - Router ID that originated this LSA (Type 1)
+ * @property {string}    subnet   - Connected subnet of the originating router
+ * @property {LsaLink[]} links    - All adjacencies and their costs
+ */
+
+/**
+ * @typedef {Object.<string, RouterLsa>} Lsdb
+ * The complete Link State Database, keyed by advertising router ID.
+ */
+
+/**
+ * @typedef {Object} DijkstraExploration
+ * @property {string}  neighbor  - Neighbour router being examined
+ * @property {string}  via       - Router being visited when this exploration occurs
+ * @property {number}  linkCost  - Cost of the link from via to neighbor
+ * @property {number}  newCost   - Candidate cost: cost[via] + linkCost
+ * @property {number}  oldCost   - Cost[neighbor] before this step
+ * @property {boolean} improved  - True if newCost < oldCost (edge was relaxed)
+ */
+
+/**
+ * @typedef {Object} DijkstraTraceStep
+ * @property {string}                  visitedNode    - Node selected this iteration
+ * @property {number}                  nodeCost       - Accumulated cost to visitedNode
+ * @property {DijkstraExploration[]}   explorations   - Neighbours examined this iteration
+ * @property {Object.<string,number>}  costsSnapshot  - Full cost table after this iteration
+ * @property {Object.<string,string>}  prevSnapshot   - Full prev table after this iteration
+ */
+
+/**
+ * @typedef {Object} SpfStepPayload
+ * @property {string}                 visitedNode  - Node visited this step
+ * @property {string[]}               visited      - All nodes visited so far
+ * @property {Object.<string,number>} costs        - Current cost table
+ * @property {Object.<string,string>} prev         - Current prev table
+ * @property {DijkstraExploration[]}  explorations - Explorations this step
+ */
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dijkstra's algorithm (exported for unit testing)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Runs Dijkstra's Shortest Path First algorithm from `srcRouter` using the
+ * OSPF costs defined in the static topology adjacency map.
+ *
+ * Algorithm overview:
+ *   1. Set cost[src] = 0; all others = ∞
+ *   2. While unvisited nodes remain:
+ *      a. Pick u = unvisited node with minimum cost[u]
+ *      b. If cost[u] = ∞, stop (disconnected graph)
+ *      c. For each unvisited neighbour v of u:
+ *           alt = cost[u] + link_cost(u,v)
+ *           if alt < cost[v]: relax → cost[v] = alt, prev[v] = u
+ *
+ * Time complexity: O(V²) with this linear-scan implementation (suitable for
+ * small topologies). A binary-heap version would be O((V+E) log V).
+ *
+ * @param {string} srcRouter - Router ID to use as the SPF root.
+ * @returns {{ costs: Object.<string,number>, prev: Object.<string,string|null> }}
+ *   `costs` maps each router ID to its minimum-cost distance from srcRouter.
+ *   `prev`  maps each router ID to its predecessor on the optimal path.
+ *
+ * @example
+ * const { costs, prev } = dijkstra('R1');
+ * costs['R5']; // → 30  (R1→R2→R3→R5, all cost-10 links)
+ * prev['R5'];  // → 'R3'
+ */
 export function dijkstra(srcRouter) {
-  const INF = Infinity;
   const costs = {};
-  const prev = {};
+  const prev  = {};
   const visited = new Set();
 
-  for (const id of ROUTER_IDS) { costs[id] = INF; prev[id] = null; }
+  for (const id of ROUTER_IDS) { costs[id] = Infinity; prev[id] = null; }
   costs[srcRouter] = 0;
 
   const unvisited = new Set(ROUTER_IDS);
 
   while (unvisited.size > 0) {
-    // Pick unvisited node with smallest cost
+    // Select unvisited node with the smallest accumulated cost
     let u = null;
     for (const id of unvisited) {
       if (u === null || costs[id] < costs[u]) u = id;
     }
-    if (costs[u] === INF) break;
+    if (costs[u] === Infinity) break; // remaining nodes are unreachable
 
     unvisited.delete(u);
     visited.add(u);
 
+    // Relax edges to unvisited neighbours
     for (const { neighbor, cost } of ADJACENCY[u]) {
       if (visited.has(neighbor)) continue;
       const alt = costs[u] + cost;
       if (alt < costs[neighbor]) {
         costs[neighbor] = alt;
-        prev[neighbor] = u;
+        prev[neighbor]  = u;
       }
     }
   }
   return { costs, prev };
 }
 
-// Reconstruct path from prev map
+// ─────────────────────────────────────────────────────────────────────────────
+// Private helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Reconstructs the full path from source to `dst` by walking the `prev` map
+ * backwards from destination to source, then reversing.
+ *
+ * @param {Object.<string,string|null>} prev - Predecessor map from {@link dijkstra}.
+ * @param {string} dst - Destination router ID.
+ * @returns {string[]} Ordered path from source to destination.
+ *
+ * @example
+ * buildPath(prev, 'R5'); // → ['R1', 'R2', 'R3', 'R5']
+ */
 function buildPath(prev, dst) {
   const path = [];
   let cur = dst;
@@ -59,7 +182,13 @@ function buildPath(prev, dst) {
   return path;
 }
 
-// Build routing table from Dijkstra result
+/**
+ * Builds the SPF-derived routing table for a single router by running
+ * {@link dijkstra} and extracting the first-hop next hop for each destination.
+ *
+ * @param {string} srcRouter - Router ID for which to build the table.
+ * @returns {OspfTable} Routing table mapping subnet → route entry.
+ */
 function buildRoutingTable(srcRouter) {
   const { costs, prev } = dijkstra(srcRouter);
   const table = {};
@@ -72,29 +201,41 @@ function buildRoutingTable(srcRouter) {
     }
     if (costs[id] === Infinity) continue;
 
-    // Find first hop toward id
-    const path = buildPath(prev, id);
+    // The first hop is the second element of the reconstructed path
+    const path    = buildPath(prev, id);
     const nextHop = path.length > 1 ? path[1] : id;
     table[subnet] = { network: subnet, nextHop, cost: costs[id], via: nextHop };
   }
   return table;
 }
 
-// Build all routing tables
+/**
+ * Builds SPF-derived routing tables for all routers in the topology.
+ *
+ * @returns {AllOspfTables} All routing tables keyed by router ID.
+ */
 function buildAllTables() {
   const tables = {};
   for (const id of ROUTER_IDS) tables[id] = buildRoutingTable(id);
   return tables;
 }
 
-// Construct LSDB (Link State Database) — each router's LSA
+/**
+ * Constructs the Link State Database (LSDB) from the static topology.
+ *
+ * In a real network each router independently originates its own Type 1
+ * Router-LSA. Here the LSDB is derived directly from the adjacency map
+ * to keep the simulation deterministic.
+ *
+ * @returns {Lsdb} Complete LSDB keyed by originating router ID.
+ */
 function buildLSDB() {
   const lsdb = {};
   for (const id of ROUTER_IDS) {
     lsdb[id] = {
       routerId: id,
-      subnet: ROUTERS[id].subnet,
-      links: ADJACENCY[id].map(({ neighbor, cost, link }) => ({
+      subnet:   ROUTERS[id].subnet,
+      links:    ADJACENCY[id].map(({ neighbor, cost, link }) => ({
         neighbor, cost, bandwidth: link.bandwidth, linkId: link.id,
       })),
     };
@@ -102,20 +243,31 @@ function buildLSDB() {
   return lsdb;
 }
 
-// Find the link object between two routers
+/**
+ * Finds the {@link Link} object connecting two routers, regardless of direction.
+ *
+ * @param {string} a - Router ID.
+ * @param {string} b - Router ID.
+ * @returns {Link|undefined} Matching link or undefined.
+ */
 function findLink(a, b) {
   return LINKS.find(l => (l.from === a && l.to === b) || (l.from === b && l.to === a));
 }
 
-// Step-by-step Dijkstra trace starting from srcRouter
+/**
+ * Runs Dijkstra's algorithm recording a detailed trace of every iteration.
+ * Used to generate the step-by-step SPF simulation steps in Phase 4.
+ *
+ * @param {string} srcRouter - SPF root router ID.
+ * @returns {DijkstraTraceStep[]} One entry per Dijkstra iteration.
+ */
 function dijkstraTrace(srcRouter) {
-  const INF = Infinity;
-  const costs = {};
-  const prev = {};
+  const costs   = {};
+  const prev    = {};
   const visited = new Set();
-  const trace = [];
+  const trace   = [];
 
-  for (const id of ROUTER_IDS) { costs[id] = INF; prev[id] = null; }
+  for (const id of ROUTER_IDS) { costs[id] = Infinity; prev[id] = null; }
   costs[srcRouter] = 0;
 
   const unvisited = new Set(ROUTER_IDS);
@@ -125,7 +277,7 @@ function dijkstraTrace(srcRouter) {
     for (const id of unvisited) {
       if (u === null || costs[id] < costs[u]) u = id;
     }
-    if (costs[u] === INF) break;
+    if (costs[u] === Infinity) break;
 
     unvisited.delete(u);
     visited.add(u);
@@ -133,50 +285,70 @@ function dijkstraTrace(srcRouter) {
     const explorations = [];
     for (const { neighbor, cost } of ADJACENCY[u]) {
       if (visited.has(neighbor)) continue;
-      const alt = costs[u] + cost;
+      const alt      = costs[u] + cost;
       const improved = alt < costs[neighbor];
       explorations.push({
-        neighbor,
-        via: u,
-        linkCost: cost,
-        newCost: alt,
-        oldCost: costs[neighbor],
-        improved,
+        neighbor, via: u, linkCost: cost,
+        newCost: alt, oldCost: costs[neighbor], improved,
       });
       if (improved) {
         costs[neighbor] = alt;
-        prev[neighbor] = u;
+        prev[neighbor]  = u;
       }
     }
 
     trace.push({
-      visitedNode: u,
-      nodeCost: costs[u],
+      visitedNode:   u,
+      nodeCost:      costs[u],
       explorations,
       costsSnapshot: { ...costs },
-      prevSnapshot: { ...prev },
+      prevSnapshot:  { ...prev  },
     });
   }
   return trace;
 }
 
-// ─────────────────────────────────────────────
-// Main export: generate all simulation steps
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Generates the complete ordered array of simulation steps for an OSPF run
+ * between two hosts.
+ *
+ * The step sequence covers:
+ *   - OSPF Phase 1: Hello → adjacency discovery
+ *   - OSPF Phase 2: DBD + LSR → database synchronisation
+ *   - OSPF Phase 3: LSU + LSAck per router → LSA flooding
+ *   - OSPF Phase 4: SPF initialisation + one step per Dijkstra iteration
+ *   - Forwarding: route decision + hop-by-hop + delivery
+ *
+ * The returned `steps` array is consumed directly by {@link useSimulation}.
+ *
+ * @param {string}   srcHostId - ID of the source host (e.g. 'H1A').
+ * @param {string}   dstHostId - ID of the destination host (e.g. 'H5B').
+ * @param {Object}   topology  - Topology module (passed in to allow mocking in tests).
+ * @param {Object.<string, Host>} topology.HOSTS - All host definitions.
+ * @returns {{ steps: SimStep[], finalTables: AllOspfTables, lsdb: Lsdb, path: string[] }}
+ *
+ * @example
+ * const { steps, path } = generateOspfSteps('H1A', 'H5B', topology);
+ * path; // → ['R1', 'R2', 'R3', 'R5']  (avoids the slow satellite link)
+ */
 export function generateOspfSteps(srcHostId, dstHostId, topology) {
   const { HOSTS } = topology;
-  const srcHost = HOSTS[srcHostId];
-  const dstHost = HOSTS[dstHostId];
+  const srcHost  = HOSTS[srcHostId];
+  const dstHost  = HOSTS[dstHostId];
   const srcRouter = srcHost.parent;
   const dstRouter = dstHost.parent;
 
-  const steps = [];
-  const lsdb = buildLSDB();
+  const steps      = [];
+  const lsdb       = buildLSDB();
   const finalTables = buildAllTables();
 
   // ── PHASE 1: CONVERGENCE ──────────────────────────────────────────────────
 
-  // Step 0: Initial state
+  // Initial tables — only directly connected subnets known
   const initTables = {};
   for (const id of ROUTER_IDS) {
     initTables[id] = {
@@ -202,7 +374,7 @@ export function generateOspfSteps(srcHostId, dstHostId, topology) {
     calculation: null,
   });
 
-  // Step 1: Hello packets
+  // Phase 1 — Hello packets on every link (bidirectional)
   const helloPackets = [];
   for (const link of LINKS) {
     helloPackets.push({ from: link.from, to: link.to, type: 'HELLO', label: 'Hello' });
@@ -228,7 +400,7 @@ export function generateOspfSteps(srcHostId, dstHostId, topology) {
     calculation: 'Hello interval: 10 seconds\nDead interval: 40 seconds\nMulticast: 224.0.0.5',
   });
 
-  // Step 2: DBD exchange
+  // Phase 2 — DBD exchange
   const dbdPackets = [];
   for (const link of LINKS) {
     dbdPackets.push({ from: link.from, to: link.to, type: 'DBD', label: 'DBD' });
@@ -254,7 +426,7 @@ export function generateOspfSteps(srcHostId, dstHostId, topology) {
     calculation: 'DBD contains: LSA headers (type, link-state ID, advertising router, sequence number)',
   });
 
-  // Step 3: LSR
+  // Phase 2 — LSR
   const lsrPackets = [];
   for (const link of LINKS) {
     lsrPackets.push({ from: link.from, to: link.to, type: 'LSR', label: 'LSR' });
@@ -280,17 +452,15 @@ export function generateOspfSteps(srcHostId, dstHostId, topology) {
     calculation: 'LSR specifies: LSA type + Link-State ID + Advertising Router',
   });
 
-  // Steps 4-8: LSA flooding, one router at a time
+  // Phase 3 — LSA flooding: one LSU + LSAck pair per router
   const partialLsdb = {};
   for (const routerId of ROUTER_IDS) {
-    // This router floods its LSA
     const lsa = lsdb[routerId];
-    const floodPackets = [];
 
-    // Flood from this router to all connected neighbours
-    for (const { neighbor, linkId } of ADJACENCY[routerId].map(a => ({ neighbor: a.neighbor, linkId: a.link.id }))) {
-      floodPackets.push({ from: routerId, to: neighbor, type: 'LSU', label: 'LSU' });
-    }
+    // LSU — flood this router's LSA to all adjacent neighbours
+    const floodPackets = ADJACENCY[routerId].map(a => ({
+      from: routerId, to: a.neighbor, type: 'LSU', label: 'LSU',
+    }));
 
     partialLsdb[routerId] = lsa;
     const linkDesc = lsa.links.map(l => `${l.neighbor} (cost ${l.cost}, ${l.bandwidth})`).join(', ');
@@ -314,11 +484,10 @@ export function generateOspfSteps(srcHostId, dstHostId, topology) {
       calculation: `LSA from ${routerId}:\n  Router ID: ${routerId}\n  Subnet: ${lsa.subnet}\n  Links:\n${lsa.links.map(l => `    → ${l.neighbor}: cost ${l.cost} (${l.bandwidth})`).join('\n')}`,
     });
 
-    // LSAck
-    const ackPackets = [];
-    for (const { neighbor } of ADJACENCY[routerId]) {
-      ackPackets.push({ from: neighbor, to: routerId, type: 'LSACK', label: 'LSAck' });
-    }
+    // LSAck — neighbours acknowledge receipt
+    const ackPackets = ADJACENCY[routerId].map(({ neighbor }) => ({
+      from: neighbor, to: routerId, type: 'LSACK', label: 'LSAck',
+    }));
 
     steps.push({
       id: `ospf_lsack_${routerId}`,
@@ -340,7 +509,7 @@ export function generateOspfSteps(srcHostId, dstHostId, topology) {
     });
   }
 
-  // LSDB complete
+  // LSDB synchronisation complete
   steps.push({
     id: 'ospf_lsdb_complete',
     phase: 'convergence',
@@ -359,7 +528,8 @@ export function generateOspfSteps(srcHostId, dstHostId, topology) {
     calculation: `Complete topology known:\n${LINKS.map(l => `  ${l.from} ↔ ${l.to}: cost ${l.ospfCost} (${l.bandwidth})`).join('\n')}`,
   });
 
-  // ── DIJKSTRA TRACE ─────────────────────────────────────────────────────────
+  // ── PHASE 4: SPF CALCULATION (DIJKSTRA) ──────────────────────────────────
+
   const spfTrace = dijkstraTrace(srcRouter);
 
   steps.push({
@@ -378,11 +548,17 @@ export function generateOspfSteps(srcHostId, dstHostId, topology) {
     tables: initTables,
     lsdb: { ...lsdb },
     calculation: `Initialise:\n  ${srcRouter}: cost 0\n  All others: cost ∞\n  Unvisited: {${ROUTER_IDS.join(', ')}}`,
-    spfStep: { visited: [], costs: Object.fromEntries(ROUTER_IDS.map(id => [id, id === srcRouter ? 0 : Infinity])), prev: {} },
+    spfStep: {
+      visited: [],
+      costs: Object.fromEntries(ROUTER_IDS.map(id => [id, id === srcRouter ? 0 : Infinity])),
+      prev: {},
+    },
   });
 
+  // One simulation step per Dijkstra iteration
   for (let i = 0; i < spfTrace.length; i++) {
     const t = spfTrace[i];
+
     const explorationLines = t.explorations.map(e =>
       `  Check ${e.neighbor}: ${e.oldCost === Infinity ? '∞' : e.oldCost} vs (${t.nodeCost} + ${e.linkCost}) = ${e.newCost}${e.improved ? ' ← UPDATE' : ' (no improvement)'}`
     ).join('\n');
@@ -404,27 +580,28 @@ export function generateOspfSteps(srcHostId, dstHostId, topology) {
         `Dijkstra picks the unvisited node with the LOWEST accumulated cost (${t.visitedNode}, cost ${t.nodeCost}). It then checks if going through ${t.visitedNode} would give a shorter path to any of its unvisited neighbours. If yes, the neighbour's cost is updated ("relaxed"). ${t.explorations.some(e => e.improved) ? `Cost improved for: ${t.explorations.filter(e => e.improved).map(e => e.neighbor).join(', ')}.` : 'No costs improved this step.'}`,
       packetType: null,
       animatedPackets: [],
-      highlightLinks: t.explorations.map(e => { const l = findLink(t.visitedNode, e.neighbor); return l ? l.id : null; }).filter(Boolean),
+      highlightLinks: t.explorations
+        .map(e => { const l = findLink(t.visitedNode, e.neighbor); return l ? l.id : null; })
+        .filter(Boolean),
       highlightNodes: [t.visitedNode, ...t.explorations.filter(e => e.improved).map(e => e.neighbor)],
       tables: initTables,
       lsdb: { ...lsdb },
       calculation: `Visit: ${t.visitedNode} (cost ${t.nodeCost})\nExamine neighbours:\n${explorationLines}\n\nCurrent cost table:\n${costsDisplay}`,
       spfStep: {
         visitedNode: t.visitedNode,
-        visited: spfTrace.slice(0, i + 1).map(s => s.visitedNode),
-        costs: t.costsSnapshot,
-        prev: t.prevSnapshot,
+        visited:     spfTrace.slice(0, i + 1).map(s => s.visitedNode),
+        costs:       t.costsSnapshot,
+        prev:        t.prevSnapshot,
         explorations: t.explorations,
       },
     });
   }
 
-  // SPF complete → build routing tables
+  // SPF complete — populate routing tables from SPF tree
   const { costs, prev } = dijkstra(srcRouter);
-  const allTables = buildAllTables();
-
+  const allTables       = buildAllTables();
   const pathToDestTrace = buildPath(prev, dstRouter);
-  const pathCost = costs[dstRouter];
+  const pathCost        = costs[dstRouter];
 
   steps.push({
     id: 'ospf_spf_done',
@@ -456,7 +633,7 @@ export function generateOspfSteps(srcHostId, dstHostId, topology) {
     title: '✓ OSPF Converged',
     description: 'All routers have complete, cost-optimal routing tables. OSPF convergence is complete.',
     teachingNote:
-      'OSPF convergence is fast: typically under 1 second for the full process (neighbour discovery can take 10-40 seconds on initial startup, but subsequent topology changes trigger immediate LSA flooding). Compare this to RIP\'s 30-second periodic updates which can take minutes to converge after a link failure.',
+      'OSPF convergence is fast: typically under 1 second for the full process (neighbour discovery can take 10–40 seconds on initial startup, but subsequent topology changes trigger immediate LSA flooding). Compare this to RIP\'s 30-second periodic updates which can take minutes to converge after a link failure.',
     packetType: null,
     animatedPackets: [],
     highlightLinks: [],
@@ -468,7 +645,7 @@ export function generateOspfSteps(srcHostId, dstHostId, topology) {
 
   // ── PHASE 2: FORWARDING ───────────────────────────────────────────────────
 
-  const path = buildPath(prev, dstRouter);
+  const path    = buildPath(prev, dstRouter);
   const pathStr = path.join(' → ');
 
   steps.push({
@@ -490,14 +667,14 @@ export function generateOspfSteps(srcHostId, dstHostId, topology) {
     ospfPath: path,
   });
 
-  // Hop-by-hop forwarding steps
+  // One step per hop along the SPF-derived forwarding path
   const dstSubnet = ROUTERS[dstRouter].subnet;
   for (let i = 0; i < path.length - 1; i++) {
-    const fromR = path[i];
-    const toR = path[i + 1];
-    const link = findLink(fromR, toR);
+    const fromR  = path[i];
+    const toR    = path[i + 1];
+    const link   = findLink(fromR, toR);
     const isLast = i === path.length - 2;
-    const entry = allTables[fromR][dstSubnet];
+    const entry  = allTables[fromR][dstSubnet];
 
     steps.push({
       id: `ospf_hop_${i}`,
@@ -519,12 +696,12 @@ export function generateOspfSteps(srcHostId, dstHostId, topology) {
       lsdb: { ...lsdb },
       calculation: `Table lookup at ${fromR}:\n  Dest: ${dstHost.ip}\n  Match: ${dstSubnet}\n  Next hop: ${toR}\n  OSPF cost: ${entry ? entry.cost : '?'}\n  Link: ${link ? link.bandwidth : 'N/A'} (cost ${link ? link.ospfCost : '?'})`,
       currentRouter: fromR,
-      nextRouter: toR,
-      linkId: link ? link.id : null,
+      nextRouter:    toR,
+      linkId:        link ? link.id : null,
     });
   }
 
-  // Delivered
+  // Final delivery confirmation
   steps.push({
     id: 'ospf_delivered',
     phase: 'forwarding',
@@ -536,7 +713,9 @@ export function generateOspfSteps(srcHostId, dstHostId, topology) {
     packetType: 'DELIVERED',
     packetLabel: null,
     animatedPackets: [],
-    highlightLinks: path.slice(0, -1).map((r, i) => { const l = findLink(r, path[i+1]); return l ? l.id : null; }).filter(Boolean),
+    highlightLinks: path.slice(0, -1)
+      .map((r, i) => { const l = findLink(r, path[i + 1]); return l ? l.id : null; })
+      .filter(Boolean),
     highlightNodes: [dstRouter, dstHostId],
     tables: allTables,
     lsdb: { ...lsdb },

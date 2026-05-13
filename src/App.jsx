@@ -3,6 +3,7 @@ import NetworkMap     from './components/NetworkMap.jsx';
 import ControlPanel   from './components/ControlPanel.jsx';
 import TeachingPanel  from './components/TeachingPanel.jsx';
 import TraceTable     from './components/TraceTable.jsx';
+import CMFloatAd      from './components/cmFloatAd.jsx';
 import './App.css';
 
 export default function App() {
@@ -89,6 +90,7 @@ export default function App() {
             dstHost={sim.dstHost}
           />
         </aside>
+        <CMFloatAd />
       </main>
 
       {/* ── TRACE TABLE ─────────────────────────────────── */}

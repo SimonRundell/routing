@@ -1,5 +1,11 @@
 /**
- * TraceTable — scrollable chronological log of all steps so far
+ * @fileoverview TraceTable — scrollable chronological event log.
+ *
+ * Displays all simulation steps up to and including the current one.
+ * The current step is highlighted with a left border in the active protocol colour.
+ * Earlier steps are retained so teachers and students can review the full sequence.
+ *
+ * Columns: step number | phase | event title | description
  */
 
 const PHASE_COLORS = {
@@ -28,6 +34,13 @@ const SUBTYPE_ICONS = {
   table_update: '📊',
 };
 
+/**
+ * @param {Object}         props
+ * @param {SimStep[]}      props.steps      - All steps for the current simulation run
+ * @param {number}         props.stepIndex  - Index of the currently active step
+ * @param {'rip'|'ospf'}   props.protocol   - Active protocol (drives accent colour)
+ * @returns {JSX.Element}
+ */
 export default function TraceTable({ steps, stepIndex, protocol }) {
   const visibleSteps = steps.slice(0, stepIndex + 1);
   const color = protocol === 'rip' ? '#f97316' : '#06b6d4';

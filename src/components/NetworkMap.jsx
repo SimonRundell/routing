@@ -1,5 +1,19 @@
 /**
- * NetworkMap — SVG canvas showing routers, hosts, links, and animated packets
+ * @fileoverview NetworkMap — SVG canvas visualisation of the network topology.
+ *
+ * Renders routers, hosts, WAN links, host stub lines, animated packets, and
+ * contextual overlays (cost/hop badges, slow-link warning, legend).
+ *
+ * All positions are defined in a 960×580 SVG viewport and scale responsively
+ * via `viewBox` + CSS `width: 100%`.
+ *
+ * Highlights are driven by the `currentStep` prop:
+ *  - `highlightLinks`  → active links glow in the protocol colour
+ *  - `highlightNodes`  → active routers/hosts glow
+ *  - `ripPath`/`ospfPath` → entire forwarding path is highlighted
+ *
+ * Packet positions are computed by linear interpolation between node centres:
+ *   pos = from + (to - from) * progress
  */
 import { ROUTERS, HOSTS, LINKS } from '../data/topology.js';
 
@@ -36,6 +50,15 @@ function getNodePos(id) {
   return { x: 0, y: 0 };
 }
 
+/**
+ * SVG network map component.
+ *
+ * @param {Object}         props
+ * @param {'rip'|'ospf'}   props.protocol      - Active protocol (drives colour theme)
+ * @param {SimStep|null}   props.currentStep   - Current simulation step (drives highlights)
+ * @param {ActivePacket[]} props.activePackets - Packets currently being animated
+ * @returns {JSX.Element}
+ */
 export default function NetworkMap({ protocol, currentStep, activePackets }) {
   const colors = PROTOCOL_COLORS[protocol];
   const highlightLinks  = new Set(currentStep?.highlightLinks  || []);
