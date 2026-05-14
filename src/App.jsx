@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useSimulation } from './hooks/useSimulation.js';
 import NetworkMap     from './components/NetworkMap.jsx';
 import ControlPanel   from './components/ControlPanel.jsx';
@@ -8,11 +9,18 @@ import './App.css';
 
 export default function App() {
   const sim = useSimulation();
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
+
+  function toggleTheme() {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    localStorage.setItem('theme', next);
+  }
 
   const protocolColor = sim.protocol === 'rip' ? '#f97316' : '#06b6d4';
 
   return (
-    <div className="app-root">
+    <div className="app-root" data-theme={theme}>
       {/* ── TOP BAR ─────────────────────────────────────── */}
       <header className="app-header">
         <div className="header-left">
@@ -35,6 +43,13 @@ export default function App() {
               ? '📦 Forwarding Phase'
               : '⏸ Ready'}
           </div>
+          <button
+            className="theme-toggle"
+            onClick={toggleTheme}
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {theme === 'dark' ? '☀' : '🌙'}
+          </button>
         </div>
       </header>
 
@@ -77,6 +92,7 @@ export default function App() {
               protocol={sim.protocol}
               currentStep={sim.currentStep}
               activePackets={sim.activePackets}
+              theme={theme}
             />
           </div>
         </section>

@@ -25,8 +25,18 @@
  * @property {string} label  - Display label (same as ip)
  * @property {number} x      - SVG canvas x-coordinate
  * @property {number} y      - SVG canvas y-coordinate
- * @property {string} parent - ID of the router this host is connected to
+ * @property {string} parent - ID of the router this host's LAN belongs to
+ * @property {string} switch - ID of the LAN switch this host connects to
  * @property {string} ip     - IPv4 address
+ */
+
+/**
+ * @typedef {Object} Switch
+ * @property {string} id     - Unique identifier (e.g. 'SW1')
+ * @property {string} label  - Display label
+ * @property {number} x      - SVG canvas x-coordinate
+ * @property {number} y      - SVG canvas y-coordinate
+ * @property {string} router - ID of the router this switch uplinks to
  */
 
 /**
@@ -78,16 +88,30 @@ export const ROUTERS = {
  * @type {Object.<string, Host>}
  */
 export const HOSTS = {
-  H1A: { id: 'H1A', label: '10.1.0.10', x: 40,  y: 210, parent: 'R1', ip: '10.1.0.10' },
-  H1B: { id: 'H1B', label: '10.1.0.11', x: 40,  y: 370, parent: 'R1', ip: '10.1.0.11' },
-  H2A: { id: 'H2A', label: '10.2.0.10', x: 270, y: 60,  parent: 'R2', ip: '10.2.0.10' },
-  H2B: { id: 'H2B', label: '10.2.0.11', x: 460, y: 60,  parent: 'R2', ip: '10.2.0.11' },
-  H3A: { id: 'H3A', label: '10.3.0.10', x: 680, y: 180, parent: 'R3', ip: '10.3.0.10' },
-  H3B: { id: 'H3B', label: '10.3.0.11', x: 700, y: 390, parent: 'R3', ip: '10.3.0.11' },
-  H4A: { id: 'H4A', label: '10.4.0.10', x: 270, y: 520, parent: 'R4', ip: '10.4.0.10' },
-  H4B: { id: 'H4B', label: '10.4.0.11', x: 460, y: 520, parent: 'R4', ip: '10.4.0.11' },
-  H5A: { id: 'H5A', label: '10.5.0.10', x: 910, y: 210, parent: 'R5', ip: '10.5.0.10' },
-  H5B: { id: 'H5B', label: '10.5.0.11', x: 910, y: 370, parent: 'R5', ip: '10.5.0.11' },
+  H1A: { id: 'H1A', label: '10.1.0.10', x: 40,  y: 210, parent: 'R1', switch: 'SW1', ip: '10.1.0.10' },
+  H1B: { id: 'H1B', label: '10.1.0.11', x: 40,  y: 370, parent: 'R1', switch: 'SW1', ip: '10.1.0.11' },
+  H2A: { id: 'H2A', label: '10.2.0.10', x: 270, y: 60,  parent: 'R2', switch: 'SW2', ip: '10.2.0.10' },
+  H2B: { id: 'H2B', label: '10.2.0.11', x: 460, y: 60,  parent: 'R2', switch: 'SW2', ip: '10.2.0.11' },
+  H3A: { id: 'H3A', label: '10.3.0.10', x: 680, y: 180, parent: 'R3', switch: 'SW3', ip: '10.3.0.10' },
+  H3B: { id: 'H3B', label: '10.3.0.11', x: 700, y: 390, parent: 'R3', switch: 'SW3', ip: '10.3.0.11' },
+  H4A: { id: 'H4A', label: '10.4.0.10', x: 270, y: 520, parent: 'R4', switch: 'SW4', ip: '10.4.0.10' },
+  H4B: { id: 'H4B', label: '10.4.0.11', x: 460, y: 520, parent: 'R4', switch: 'SW4', ip: '10.4.0.11' },
+  H5A: { id: 'H5A', label: '10.5.0.10', x: 910, y: 210, parent: 'R5', switch: 'SW5', ip: '10.5.0.10' },
+  H5B: { id: 'H5B', label: '10.5.0.11', x: 910, y: 370, parent: 'R5', switch: 'SW5', ip: '10.5.0.11' },
+};
+
+/**
+ * LAN switches, one per router site. Each switch aggregates the site's hosts
+ * and uplinks to the router — matching how a real Cisco Packet Tracer topology
+ * would be wired.
+ * @type {Object.<string, Switch>}
+ */
+export const SWITCHES = {
+  SW1: { id: 'SW1', label: 'SW1', x: 75,  y: 290, router: 'R1' },
+  SW2: { id: 'SW2', label: 'SW2', x: 365, y: 78,  router: 'R2' },
+  SW3: { id: 'SW3', label: 'SW3', x: 690, y: 290, router: 'R3' },
+  SW4: { id: 'SW4', label: 'SW4', x: 365, y: 500, router: 'R4' },
+  SW5: { id: 'SW5', label: 'SW5', x: 875, y: 290, router: 'R5' },
 };
 
 /**
