@@ -145,11 +145,6 @@ export const LINKS = [
     label: '10 Mbps', isSlow: false,
   },
   {
-    id: 'R2-R4', from: 'R2', to: 'R4',
-    bandwidth: '10 Mbps', ospfCost: 10, hops: 1,
-    label: '10 Mbps', isSlow: false,
-  },
-  {
     id: 'R3-R5', from: 'R3', to: 'R5',
     bandwidth: '10 Mbps', ospfCost: 10, hops: 1,
     label: '10 Mbps', isSlow: false,
