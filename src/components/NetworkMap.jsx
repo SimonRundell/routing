@@ -44,8 +44,8 @@ const PROTOCOL_COLORS = {
 const SVG_DARK = {
   bgFill:        '#0f172a',
   gridStroke:    '#1e293b',
-  linkStroke:    '#334155',
-  linkOpacity:   0.6,
+  linkStroke:    '#4a6484',
+  linkOpacity:   0.85,
   hostBg:        '#0f2438',
   hostStroke:    '#1d4ed8',
   hostIcon:      '#1e40af',
@@ -64,8 +64,8 @@ const SVG_DARK = {
   routerActiveBg:'#1e293b',
   routerLabel:   '#93c5fd',
   routerSubnet:  '#64748b',
-  stubStroke:    '#1e3a5f',
-  uplinkStroke:  '#1e3a5f',
+  stubStroke:    '#3b82c8',
+  uplinkStroke:  '#3b82c8',
   bwBg:          '#0f172a',
   bwText:        '#94a3b8',
   bwSlow:        '#f87171',
@@ -81,7 +81,7 @@ const SVG_LIGHT = {
   bgFill:        '#f0f4f8',
   gridStroke:    '#dce3ea',
   linkStroke:    '#475569',
-  linkOpacity:   0.7,
+  linkOpacity:   0.85,
   hostBg:        '#dbeafe',
   hostStroke:    '#1d4ed8',
   hostIcon:      '#1d4ed8',
@@ -138,6 +138,12 @@ export default function NetworkMap({ protocol, currentStep, activePackets, theme
   const colors = PROTOCOL_COLORS[protocol];
   const sv = theme === 'light' ? SVG_LIGHT : SVG_DARK;
 
+  // On the final delivered step, override all active/path colours to green
+  const isDelivered = !!currentStep?.delivered;
+  const activeColor = isDelivered ? '#4ade80' : colors.primary;
+  const activeShade = isDelivered ? '#86efac' : colors.active;
+  const activeGlow  = isDelivered ? 'rgba(74,222,128,0.4)' : colors.glow;
+
   const highlightLinks  = new Set(currentStep?.highlightLinks  || []);
   const highlightNodes  = new Set(currentStep?.highlightNodes  || []);
 
@@ -169,6 +175,12 @@ export default function NetworkMap({ protocol, currentStep, activePackets, theme
           <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
           <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
         </filter>
+        {/* Link glow uses userSpaceOnUse so horizontal lines (height=0 bounding box)
+            are not clipped by the default objectBoundingBox filter region */}
+        <filter id="glow-link" filterUnits="userSpaceOnUse" x="-20" y="-20" width="1000" height="620">
+          <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+          <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
         <filter id="glow-node">
           <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
           <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
@@ -195,16 +207,16 @@ export default function NetworkMap({ protocol, currentStep, activePackets, theme
         const isSlow    = link.isSlow;
 
         let stroke = sv.linkStroke;
-        let strokeWidth = 2;
+        let strokeWidth = 2.5;
         let strokeDasharray = isSlow ? '8 4' : 'none';
         let opacity = sv.linkOpacity;
         let filter = '';
 
         if (isActive || isOnPath) {
-          stroke = colors.primary;
+          stroke = activeColor;
           strokeWidth = isSlow ? 3 : 4;
           opacity = 1;
-          filter = `url(#glow-${protocol})`;
+          filter = 'url(#glow-link)';
         }
 
         const mx = (a.x + b.x) / 2;
@@ -240,7 +252,7 @@ export default function NetworkMap({ protocol, currentStep, activePackets, theme
             {(isActive || isOnPath) && (
               <g transform={`translate(${mx + 30},${my - 14})`}>
                 <rect x={-20} y={-9} width={40} height={16} rx={4}
-                  fill={colors.primary} opacity={0.9}/>
+                  fill={activeColor} opacity={0.9}/>
                 <text textAnchor="middle" y={4} fontSize="10"
                   fill="#fff" fontFamily="monospace" fontWeight="bold">
                   {protocol === 'ospf' ? `c=${link.ospfCost}` : `1 hop`}
@@ -254,12 +266,13 @@ export default function NetworkMap({ protocol, currentStep, activePackets, theme
       {/* ── SWITCH → ROUTER UPLINK LINES ─────────────── */}
       {Object.values(SWITCHES).map(sw => {
         const r = ROUTERS[sw.router];
+        const swOnPath = isDelivered && highlightNodes.has(sw.id);
         return (
           <line key={`uplink-${sw.id}`}
             x1={sw.x} y1={sw.y} x2={r.x} y2={r.y}
-            stroke={sv.uplinkStroke}
-            strokeWidth={1.5}
-            opacity={0.85}
+            stroke={swOnPath ? activeColor : sv.uplinkStroke}
+            strokeWidth={swOnPath ? 2.5 : 2}
+            opacity={swOnPath ? 1 : 0.9}
           />
         );
       })}
@@ -272,9 +285,9 @@ export default function NetworkMap({ protocol, currentStep, activePackets, theme
           <line key={`stub-${h.id}`}
             x1={h.x} y1={h.y} x2={sw.x} y2={sw.y}
             stroke={isActive ? sv.hostActiveStr : sv.stubStroke}
-            strokeWidth={isActive ? 2 : 1}
+            strokeWidth={isActive ? 2.5 : 1.5}
             strokeDasharray="4 3"
-            opacity={0.7}
+            opacity={0.85}
           />
         );
       })}
@@ -331,31 +344,31 @@ export default function NetworkMap({ protocol, currentStep, activePackets, theme
       {/* ── ROUTER NODES ──────────────────────────────── */}
       {Object.values(ROUTERS).map(r => {
         const isActive = highlightNodes.has(r.id);
-        const rActiveBg = protocol === 'rip' ? '#431407' : '#0c2540';
+        const rActiveBg = isDelivered ? '#0a2e1a' : (protocol === 'rip' ? '#431407' : '#0c2540');
         return (
           <g key={r.id} transform={`translate(${r.x},${r.y})`}
             filter={isActive ? 'url(#glow-node)' : ''}>
             {/* Outer ring glow */}
             {isActive && (
-              <circle r={ROUTER_R + 8} fill={colors.glow} opacity={0.5}/>
+              <circle r={ROUTER_R + 8} fill={activeGlow} opacity={0.5}/>
             )}
             {/* Router body */}
             <circle r={ROUTER_R}
               fill={isActive ? (theme === 'light' ? sv.routerActiveBg : rActiveBg) : sv.routerBg}
-              stroke={isActive ? colors.primary : sv.routerStroke}
+              stroke={isActive ? activeColor : sv.routerStroke}
               strokeWidth={isActive ? 3 : 2}
             />
             {/* Router icon - cylinder */}
             <ellipse cx={0} cy={-6} rx={11} ry={4}
-              fill={isActive ? colors.primary : sv.routerCyl1} opacity={0.9}/>
+              fill={isActive ? activeColor : sv.routerCyl1} opacity={0.9}/>
             <rect x={-11} y={-6} width={22} height={12}
-              fill={isActive ? colors.primary : sv.routerCyl2} opacity={0.8}/>
+              fill={isActive ? activeColor : sv.routerCyl2} opacity={0.8}/>
             <ellipse cx={0} cy={6} rx={11} ry={4}
-              fill={isActive ? colors.active : sv.routerCyl3} opacity={0.9}/>
+              fill={isActive ? activeShade : sv.routerCyl3} opacity={0.9}/>
             {/* Label */}
             <text y={ROUTER_R + 14} textAnchor="middle"
               fontSize="13" fontWeight="bold"
-              fill={isActive ? colors.primary : sv.routerLabel}
+              fill={isActive ? activeColor : sv.routerLabel}
               fontFamily="'Courier New', monospace">
               {r.label}
             </text>
@@ -394,11 +407,11 @@ export default function NetworkMap({ protocol, currentStep, activePackets, theme
         if (!slowLink) return null;
         const a = ROUTERS[slowLink.from];
         const b = ROUTERS[slowLink.to];
-        const mx = (a.x + b.x) / 2 - 40;
-        const my = (a.y + b.y) / 2 + 20;
+        const mx = (a.x + b.x) / 2;
+        const my = (a.y + b.y) / 2 + 26;
         return (
           <g transform={`translate(${mx},${my})`}>
-            <rect x={-32} y={-12} width={64} height={20} rx={4}
+            <rect x={-36} y={-12} width={72} height={20} rx={4}
               fill={sv.satBg} stroke={sv.satStroke} strokeWidth={1} opacity={0.9}/>
             <text textAnchor="middle" y={3} fontSize="9.5"
               fill={sv.satText} fontFamily="monospace" fontWeight="bold">

@@ -92,12 +92,12 @@ export const HOSTS = {
   H1B: { id: 'H1B', label: '10.1.0.11', x: 40,  y: 370, parent: 'R1', switch: 'SW1', ip: '10.1.0.11' },
   H2A: { id: 'H2A', label: '10.2.0.10', x: 270, y: 60,  parent: 'R2', switch: 'SW2', ip: '10.2.0.10' },
   H2B: { id: 'H2B', label: '10.2.0.11', x: 460, y: 60,  parent: 'R2', switch: 'SW2', ip: '10.2.0.11' },
-  H3A: { id: 'H3A', label: '10.3.0.10', x: 680, y: 180, parent: 'R3', switch: 'SW3', ip: '10.3.0.10' },
-  H3B: { id: 'H3B', label: '10.3.0.11', x: 700, y: 390, parent: 'R3', switch: 'SW3', ip: '10.3.0.11' },
-  H4A: { id: 'H4A', label: '10.4.0.10', x: 270, y: 520, parent: 'R4', switch: 'SW4', ip: '10.4.0.10' },
-  H4B: { id: 'H4B', label: '10.4.0.11', x: 460, y: 520, parent: 'R4', switch: 'SW4', ip: '10.4.0.11' },
-  H5A: { id: 'H5A', label: '10.5.0.10', x: 910, y: 210, parent: 'R5', switch: 'SW5', ip: '10.5.0.10' },
-  H5B: { id: 'H5B', label: '10.5.0.11', x: 910, y: 370, parent: 'R5', switch: 'SW5', ip: '10.5.0.11' },
+  H3A: { id: 'H3A', label: '10.3.0.10', x: 668, y: 140, parent: 'R3', switch: 'SW3', ip: '10.3.0.10' },
+  H3B: { id: 'H3B', label: '10.3.0.11', x: 740, y: 170, parent: 'R3', switch: 'SW3', ip: '10.3.0.11' },
+  H4A: { id: 'H4A', label: '10.4.0.10', x: 155, y: 548, parent: 'R4', switch: 'SW4', ip: '10.4.0.10' },
+  H4B: { id: 'H4B', label: '10.4.0.11', x: 350, y: 548, parent: 'R4', switch: 'SW4', ip: '10.4.0.11' },
+  H5A: { id: 'H5A', label: '10.5.0.10', x: 920, y: 210, parent: 'R5', switch: 'SW5', ip: '10.5.0.10' },
+  H5B: { id: 'H5B', label: '10.5.0.11', x: 920, y: 370, parent: 'R5', switch: 'SW5', ip: '10.5.0.11' },
 };
 
 /**
@@ -109,9 +109,9 @@ export const HOSTS = {
 export const SWITCHES = {
   SW1: { id: 'SW1', label: 'SW1', x: 75,  y: 290, router: 'R1' },
   SW2: { id: 'SW2', label: 'SW2', x: 365, y: 78,  router: 'R2' },
-  SW3: { id: 'SW3', label: 'SW3', x: 690, y: 290, router: 'R3' },
-  SW4: { id: 'SW4', label: 'SW4', x: 365, y: 500, router: 'R4' },
-  SW5: { id: 'SW5', label: 'SW5', x: 875, y: 290, router: 'R5' },
+  SW3: { id: 'SW3', label: 'SW3', x: 648, y: 210, router: 'R3' },
+  SW4: { id: 'SW4', label: 'SW4', x: 255, y: 510, router: 'R4' },
+  SW5: { id: 'SW5', label: 'SW5', x: 920, y: 290, router: 'R5' },
 };
 
 /**

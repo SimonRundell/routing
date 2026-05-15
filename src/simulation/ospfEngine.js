@@ -336,7 +336,7 @@ function dijkstraTrace(srcRouter) {
  * path; // → ['R1', 'R2', 'R3', 'R5']  (avoids the slow satellite link)
  */
 export function generateOspfSteps(srcHostId, dstHostId, topology) {
-  const { HOSTS } = topology;
+  const { HOSTS, SWITCHES } = topology;
   const srcHost  = HOSTS[srcHostId];
   const dstHost  = HOSTS[dstHostId];
   const srcRouter = srcHost.parent;
@@ -702,6 +702,16 @@ export function generateOspfSteps(srcHostId, dstHostId, topology) {
   }
 
   // Final delivery confirmation
+  const srcSwitch = Object.values(SWITCHES).find(sw => sw.router === srcRouter);
+  const dstSwitch = Object.values(SWITCHES).find(sw => sw.router === dstRouter);
+  const deliveredNodes = [
+    srcHostId,
+    ...(srcSwitch ? [srcSwitch.id] : []),
+    ...path,
+    ...(dstSwitch ? [dstSwitch.id] : []),
+    dstHostId,
+  ];
+
   steps.push({
     id: 'ospf_delivered',
     phase: 'forwarding',
@@ -716,11 +726,12 @@ export function generateOspfSteps(srcHostId, dstHostId, topology) {
     highlightLinks: path.slice(0, -1)
       .map((r, i) => { const l = findLink(r, path[i + 1]); return l ? l.id : null; })
       .filter(Boolean),
-    highlightNodes: [dstRouter, dstHostId],
+    highlightNodes: deliveredNodes,
     tables: allTables,
     lsdb: { ...lsdb },
     calculation: `OSPF Summary:\n  Protocol: Link State\n  Metric: Cost (bandwidth-based)\n  Reference BW: 100 Mbps\n  Cost = 10^8 ÷ BW(bps)\n  Algorithm: Dijkstra's SPF\n  Convergence: FAST (<1 sec on changes)`,
     ospfPath: path,
+    delivered: true,
   });
 
   return { steps, finalTables: allTables, lsdb, path };

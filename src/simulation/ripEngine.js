@@ -231,7 +231,7 @@ function findLink(a, b) {
  * // steps contains both convergence and forwarding phases
  */
 export function generateRipSteps(srcHostId, dstHostId, topology) {
-  const { HOSTS } = topology;
+  const { HOSTS, SWITCHES } = topology;
   const srcHost = HOSTS[srcHostId];
   const dstHost = HOSTS[dstHostId];
   const srcRouter = srcHost.parent;
@@ -414,6 +414,16 @@ export function generateRipSteps(srcHostId, dstHostId, topology) {
   }
 
   // Final delivery confirmation step
+  const srcSwitch = Object.values(SWITCHES).find(sw => sw.router === srcRouter);
+  const dstSwitch = Object.values(SWITCHES).find(sw => sw.router === dstRouter);
+  const deliveredNodes = [
+    srcHostId,
+    ...(srcSwitch ? [srcSwitch.id] : []),
+    ...path,
+    ...(dstSwitch ? [dstSwitch.id] : []),
+    dstHostId,
+  ];
+
   steps.push({
     id: 'fwd_delivered',
     phase: 'forwarding',
@@ -425,10 +435,11 @@ export function generateRipSteps(srcHostId, dstHostId, topology) {
     packetLabel: null,
     animatedPackets: [],
     highlightLinks: path.slice(0, -1).map((r, i) => { const l = findLink(r, path[i+1]); return l ? l.id : null; }).filter(Boolean),
-    highlightNodes: [dstRouter, dstHostId],
+    highlightNodes: deliveredNodes,
     tables: cloneTables(tables),
     calculation: `RIP Summary:\n  Protocol: Distance Vector\n  Metric: Hop Count\n  Max hops: 15\n  Update interval: 30 seconds\n  Convergence: SLOW`,
     ripPath: path,
+    delivered: true,
   });
 
   return { steps, finalTables: tables, path };

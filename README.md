@@ -47,18 +47,18 @@ The scrollable event log at the bottom records every step so far with its phase,
 ## Network Topology
 
 ```
-  LAN-1            LAN-2
- (10.1.x)         (10.2.x)
- H1A H1B          H2A H2B
-  |   |            |   |
-  └─[R1]──10 Mbps─[R2]──10 Mbps──[R3]──10 Mbps──[R5]
-      \         512 Kbps ⚡        |              (10.5.x)
-       \─────SATELLITE LINK────────┘            H5A H5B
-                                   |
-                                  [R2]──10 Mbps──[R4]──10 Mbps──[R5]
-                                                  |
-                                               LAN-4 (10.4.x)
-                                               H4A H4B
+        10 Mbps         10 Mbps         10 Mbps         10 Mbps
+[R1] ──────────── [R2] ──────────── [R3] ──────────── [R5] ──────────── [R4]
+  └──────────────────── 512 Kbps SATELLITE ────────────┘
+```
+
+Each router has a LAN with two hosts connected via a switch:
+
+```
+LAN-1 (10.1.0.x)   LAN-2 (10.2.0.x)   LAN-3 (10.3.0.x)   LAN-5 (10.5.0.x)   LAN-4 (10.4.0.x)
+H1A H1B            H2A H2B            H3A H3B            H5A H5B            H4A H4B
+  \ /                \ /                \ /                \ /                \ /
+ [SW1]─────────[R1]  [SW2]──────[R2]  [SW3]──────[R3]  [SW5]──────[R5]  [SW4]──────[R4]
 ```
 
 ### Routers
@@ -78,7 +78,6 @@ The scrollable event log at the bottom records every step so far with its phase,
 | R1–R2 | 10 Mbps | 10 | 1 |
 | **R1–R3** | **512 Kbps** | **195** | **1** |
 | R2–R3 | 10 Mbps | 10 | 1 |
-| R2–R4 | 10 Mbps | 10 | 1 |
 | R3–R5 | 10 Mbps | 10 | 1 |
 | R4–R5 | 10 Mbps | 10 | 1 |
 
@@ -251,20 +250,19 @@ Result:
 Initialise: R1=0, R2=∞, R3=∞, R4=∞, R5=∞
 
 Visit R1 (cost 0):
-  Check R2: ∞ vs (0 + 10) = 10  → UPDATE  R2=10 via R1
-  Check R3: ∞ vs (0 + 195) = 195 → UPDATE R3=195 via R1
+  Check R2: ∞   vs (0 + 10)  = 10  → UPDATE R2=10  via R1
+  Check R3: ∞   vs (0 + 195) = 195 → UPDATE R3=195 via R1
 
 Visit R2 (cost 10):                   ← lowest unvisited
-  Check R3: 195 vs (10 + 10) = 20 → UPDATE R3=20 via R2
-  Check R4: ∞   vs (10 + 10) = 20 → UPDATE R4=20 via R2
+  Check R3: 195 vs (10 + 10) = 20  → UPDATE R3=20  via R2
 
-Visit R3 (cost 20):                   ← tied with R4; R3 chosen
-  Check R5: ∞ vs (20 + 10) = 30  → UPDATE R5=30 via R3
+Visit R3 (cost 20):                   ← lowest unvisited
+  Check R5: ∞   vs (20 + 10) = 30  → UPDATE R5=30  via R3
 
-Visit R4 (cost 20):
-  Check R5: 30 vs (20 + 10) = 30 → no improvement (equal cost)
+Visit R5 (cost 30):                   ← lowest unvisited
+  Check R4: ∞   vs (30 + 10) = 40  → UPDATE R4=40  via R5
 
-Visit R5 (cost 30): destination reached
+Visit R4 (cost 40): all nodes settled
 
 Optimal path R1→R5: R1 → R2 → R3 → R5  (total cost 30)
 
@@ -389,6 +387,7 @@ Both engines produce an array of step objects consumed by `useSimulation`:
   ripPath:         string[],    // RIP only — chosen forwarding path
   ospfPath:        string[],    // OSPF only — chosen forwarding path
   hasSlowLink:     boolean,     // RIP only — flags the satellite link warning
+  delivered:       boolean,     // true on the final delivery step — triggers full-path green highlight
 }
 ```
 
@@ -400,6 +399,20 @@ Both engines produce an array of step objects consumed by `useSimulation`:
 x = ax + (bx - ax) * progress
 y = ay + (by - ay) * progress
 ```
+
+---
+
+## Changelog
+
+### 0.1.6
+- **Layout — R4 area**: SW4 and its hosts moved to the lower-left of R4 so the uplink line no longer overlaps the router label/subnet text.
+- **Layout — SW3**: repositioned off the R3–R5 horizontal line to sit between R3 and H3A (10.3.0.10); H3B (10.3.0.11) moved to the clear space above R3 to avoid clashing with the R4–R5 link label.
+- **Layout — SW5**: moved to align vertically between H5A and H5B, clearly separated from the R3–R5 link.
+- **Visual clarity**: WAN link lines thickened and dark-mode link/stub/uplink colours brightened for better legibility.
+- **Satellite badge**: centred on the R1–R3 midpoint and positioned directly below the 512 Kbps speed label.
+- **Delivered-state highlight**: on the final step of both RIP and OSPF simulations the complete route — source host → source switch → all intermediate routers → destination switch → destination host — is now highlighted end-to-end in green.
+- **SVG filter fix**: WAN links that are perfectly horizontal (R1–R3, R3–R5, both at y=290) were invisible when highlighted because the default `objectBoundingBox` SVG filter produces a zero-height filter region for zero-height bounding boxes. Replaced with a dedicated `glow-link` filter using `filterUnits="userSpaceOnUse"` and explicit canvas-sized bounds.
+- **Docs**: corrected topology diagram, removed non-existent R2–R4 link from the links table, and updated the Dijkstra worked example accordingly (R4 is only reachable via R5).
 
 ---
 
