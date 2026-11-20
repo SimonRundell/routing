@@ -4,7 +4,7 @@ import {useState, useEffect} from 'react';
  * CMFloatAd Component
  * Renders a floating advertisement banner with customizable colors and responsive design.
  * Features hover expansion, mobile optimization, and smooth transitions.
- * This version modified for Exeter College by Simon Rundell - Dept of ITDD.
+ * This version modified for Exeter College by Simon Rundell - Dept of Cybersecurity and Digital Technologies.
  * 
  * @param {Object} props - Component props
  * @param {string} [props.color='#ffffff'] - Text color for the advertisement content
@@ -90,7 +90,7 @@ return (
         <img alt="cm-logo" src={cmLogo} height="40" width="85" />
         {isMobile && isHovered ? (
           <div style={textContentStyle}>
-            <span>&copy; {currentYear} Designed and Created by Simon Rundell, Dept of ITDD</span>
+            <span>&copy; {currentYear} Designed and Created by Simon Rundell, Dept of Cybersecurity and Digital Technologies</span>
             <span>Exeter College, Hele Road, Exeter EX4 4JS.</span>
             <span>Tel: 01392 400500</span>
             <span>
@@ -105,7 +105,7 @@ return (
           </div>
         ) : !isMobile ? (
           <span>
-            &nbsp;&copy; {currentYear} Designed and Created by Simon Rundell, Dept of ITDD, Exeter College, Hele Road, Exeter EX4 4JS. | Tel: 01392 400500 | eMail:{' '}
+            &nbsp;&copy; {currentYear} Designed and Created by Simon Rundell, Dept of Cybersecurity and Digital Technologies, Exeter College, Hele Road, Exeter EX4 4JS. | Tel: 01392 400500 | eMail:{' '}
             <a
                 href="mailto:simonrundell@exe-coll.ac.uk"
                 style={{ color: color, textDecoration: 'none' }}
